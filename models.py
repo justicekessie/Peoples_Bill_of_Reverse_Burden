@@ -1,306 +1,265 @@
-{
-  "nbformat": 4,
-  "nbformat_minor": 0,
-  "metadata": {
-    "colab": {
-      "private_outputs": true,
-      "provenance": [],
-      "authorship_tag": "ABX9TyO/0uOlcBRqWKxHqnXDSph6",
-      "include_colab_link": true
-    },
-    "kernelspec": {
-      "name": "python3",
-      "display_name": "Python 3"
-    },
-    "language_info": {
-      "name": "python"
-    }
-  },
-  "cells": [
-    {
-      "cell_type": "markdown",
-      "metadata": {
-        "id": "view-in-github",
-        "colab_type": "text"
-      },
-      "source": [
-        "<a href=\"https://colab.research.google.com/github/justicekessie/Peoples_Bill_of_Reverse_Burden/blob/main/models.py\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
-      ]
-    },
-    {
-      "cell_type": "code",
-      "execution_count": null,
-      "metadata": {
-        "id": "NnKHYvsRbRFJ"
-      },
-      "outputs": [],
-      "source": [
-        "\"\"\"\n",
-        "Database Models for People's Bill Platform\n",
-        "SQLAlchemy models for all database tables\n",
-        "\"\"\"\n",
-        "\n",
-        "from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, JSON\n",
-        "from sqlalchemy.ext.declarative import declarative_base\n",
-        "from sqlalchemy.orm import relationship\n",
-        "from datetime import datetime\n",
-        "\n",
-        "Base = declarative_base()\n",
-        "\n",
-        "class Submission(Base):\n",
-        "    \"\"\"Citizen submissions table\"\"\"\n",
-        "    __tablename__ = \"submissions\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    content = Column(Text, nullable=False)\n",
-        "    region = Column(String(50), nullable=False, index=True)\n",
-        "    age = Column(Integer, nullable=True)\n",
-        "    occupation = Column(String(100), nullable=True)\n",
-        "    language = Column(String(10), default=\"en\")\n",
-        "\n",
-        "    # Processing fields\n",
-        "    status = Column(String(20), default=\"pending\", index=True)  # pending, approved, rejected\n",
-        "    cluster_id = Column(Integer, ForeignKey(\"clusters.id\"), nullable=True)\n",
-        "\n",
-        "    # Metadata\n",
-        "    ip_address = Column(String(45), nullable=True)  # For rate limiting\n",
-        "    user_agent = Column(String(200), nullable=True)\n",
-        "    submission_method = Column(String(20), default=\"web\")  # web, sms, ussd\n",
-        "\n",
-        "    # Review tracking\n",
-        "    reviewed_by = Column(Integer, ForeignKey(\"users.id\"), nullable=True)\n",
-        "    reviewed_at = Column(DateTime, nullable=True)\n",
-        "    review_notes = Column(Text, nullable=True)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n",
-        "\n",
-        "    # Relationships\n",
-        "    cluster = relationship(\"Cluster\", back_populates=\"submissions\")\n",
-        "    reviewer = relationship(\"User\", back_populates=\"reviewed_submissions\")\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<Submission {self.id}: {self.content[:50]}...>\"\n",
-        "\n",
-        "\n",
-        "class Cluster(Base):\n",
-        "    \"\"\"AI-generated clusters of similar submissions\"\"\"\n",
-        "    __tablename__ = \"clusters\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    theme = Column(String(200), nullable=False)\n",
-        "    summary = Column(Text, nullable=False)\n",
-        "    representative_text = Column(Text)  # Most representative submission\n",
-        "\n",
-        "    # ML fields\n",
-        "    embedding_vector = Column(JSON)  # Store as JSON for simplicity in Phase 1\n",
-        "    confidence_score = Column(Float, default=0.0)\n",
-        "    keywords = Column(JSON)  # Top keywords for this cluster\n",
-        "\n",
-        "    # Statistics\n",
-        "    submission_count = Column(Integer, default=0)\n",
-        "    regions_represented = Column(JSON)  # List of regions\n",
-        "    avg_age = Column(Float, nullable=True)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n",
-        "\n",
-        "    # Relationships\n",
-        "    submissions = relationship(\"Submission\", back_populates=\"cluster\")\n",
-        "    bill_clauses = relationship(\"BillClause\", back_populates=\"cluster\")\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<Cluster {self.id}: {self.theme}>\"\n",
-        "\n",
-        "\n",
-        "class BillClause(Base):\n",
-        "    \"\"\"Draft bill clauses generated from clusters\"\"\"\n",
-        "    __tablename__ = \"bill_clauses\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    cluster_id = Column(Integer, ForeignKey(\"clusters.id\"), nullable=False)\n",
-        "\n",
-        "    # Clause content\n",
-        "    section_number = Column(Integer, nullable=False)\n",
-        "    title = Column(String(200), nullable=False)\n",
-        "    content = Column(Text, nullable=False)\n",
-        "    rationale = Column(Text)  # Explanation of why this clause exists\n",
-        "\n",
-        "    # Legal review\n",
-        "    legal_review_status = Column(String(20), default=\"draft\")  # draft, reviewed, approved\n",
-        "    legal_reviewer_id = Column(Integer, ForeignKey(\"users.id\"), nullable=True)\n",
-        "    legal_review_notes = Column(Text)\n",
-        "\n",
-        "    # Version control\n",
-        "    version = Column(Integer, default=1)\n",
-        "    previous_version = Column(Text)  # Store previous content\n",
-        "\n",
-        "    # Public feedback\n",
-        "    public_comments_enabled = Column(Boolean, default=True)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n",
-        "\n",
-        "    # Relationships\n",
-        "    cluster = relationship(\"Cluster\", back_populates=\"bill_clauses\")\n",
-        "    votes = relationship(\"Vote\", back_populates=\"clause\")\n",
-        "    edit_history = relationship(\"EditHistory\", back_populates=\"clause\")\n",
-        "    legal_reviewer = relationship(\"User\", back_populates=\"reviewed_clauses\")\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<BillClause {self.section_number}: {self.title}>\"\n",
-        "\n",
-        "\n",
-        "class User(Base):\n",
-        "    \"\"\"Admin and moderator users\"\"\"\n",
-        "    __tablename__ = \"users\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    username = Column(String(50), unique=True, nullable=False, index=True)\n",
-        "    email = Column(String(100), unique=True, nullable=False)\n",
-        "    password_hash = Column(String(200), nullable=False)\n",
-        "\n",
-        "    # Profile\n",
-        "    full_name = Column(String(100))\n",
-        "    role = Column(String(20), default=\"moderator\")  # admin, moderator, legal_reviewer\n",
-        "    organization = Column(String(100))  # e.g., \"Ghana Bar Association\"\n",
-        "\n",
-        "    # Activity tracking\n",
-        "    last_login = Column(DateTime)\n",
-        "    login_count = Column(Integer, default=0)\n",
-        "\n",
-        "    # Status\n",
-        "    is_active = Column(Boolean, default=True)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n",
-        "\n",
-        "    # Relationships\n",
-        "    reviewed_submissions = relationship(\"Submission\", back_populates=\"reviewer\")\n",
-        "    reviewed_clauses = relationship(\"BillClause\", back_populates=\"legal_reviewer\")\n",
-        "    edit_history = relationship(\"EditHistory\", back_populates=\"editor\")\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<User {self.username}>\"\n",
-        "\n",
-        "\n",
-        "class Vote(Base):\n",
-        "    \"\"\"Public votes on bill clauses\"\"\"\n",
-        "    __tablename__ = \"votes\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    clause_id = Column(Integer, ForeignKey(\"bill_clauses.id\"), nullable=False)\n",
-        "\n",
-        "    # Vote details\n",
-        "    vote_value = Column(String(10), nullable=False)  # approve, reject, neutral\n",
-        "    comment = Column(Text, nullable=True)\n",
-        "\n",
-        "    # Voter info (anonymous but tracked for statistics)\n",
-        "    region = Column(String(50), nullable=True)\n",
-        "    voter_hash = Column(String(64))  # Hashed identifier to prevent duplicate votes\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "\n",
-        "    # Relationships\n",
-        "    clause = relationship(\"BillClause\", back_populates=\"votes\")\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<Vote {self.id}: {self.vote_value}>\"\n",
-        "\n",
-        "\n",
-        "class Region(Base):\n",
-        "    \"\"\"Ghana's 16 regions for tracking\"\"\"\n",
-        "    __tablename__ = \"regions\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    name = Column(String(50), unique=True, nullable=False)\n",
-        "    code = Column(String(10), unique=True, nullable=False)\n",
-        "    capital = Column(String(50))\n",
-        "    population = Column(Integer)  # For representation weighting\n",
-        "\n",
-        "    # Statistics\n",
-        "    submission_count = Column(Integer, default=0)\n",
-        "    last_submission = Column(DateTime, nullable=True)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<Region {self.name}>\"\n",
-        "\n",
-        "\n",
-        "class EditHistory(Base):\n",
-        "    \"\"\"Track all edits to bill clauses\"\"\"\n",
-        "    __tablename__ = \"edit_history\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    clause_id = Column(Integer, ForeignKey(\"bill_clauses.id\"), nullable=False)\n",
-        "    editor_id = Column(Integer, ForeignKey(\"users.id\"), nullable=False)\n",
-        "\n",
-        "    # Change details\n",
-        "    field_changed = Column(String(50))  # title, content, section_number\n",
-        "    old_value = Column(Text)\n",
-        "    new_value = Column(Text)\n",
-        "    change_reason = Column(Text)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "\n",
-        "    # Relationships\n",
-        "    clause = relationship(\"BillClause\", back_populates=\"edit_history\")\n",
-        "    editor = relationship(\"User\", back_populates=\"edit_history\")\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<EditHistory {self.id}: {self.field_changed}>\"\n",
-        "\n",
-        "\n",
-        "class SystemLog(Base):\n",
-        "    \"\"\"System activity logging\"\"\"\n",
-        "    __tablename__ = \"system_logs\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "\n",
-        "    # Log details\n",
-        "    action = Column(String(100), nullable=False)\n",
-        "    description = Column(Text)\n",
-        "    user_id = Column(Integer, ForeignKey(\"users.id\"), nullable=True)\n",
-        "    ip_address = Column(String(45))\n",
-        "\n",
-        "    # Additional data\n",
-        "    metadata = Column(JSON)\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<SystemLog {self.id}: {self.action}>\"\n",
-        "\n",
-        "\n",
-        "class SMSSubmission(Base):\n",
-        "    \"\"\"Track SMS submissions (Phase 2)\"\"\"\n",
-        "    __tablename__ = \"sms_submissions\"\n",
-        "\n",
-        "    id = Column(Integer, primary_key=True, index=True)\n",
-        "    phone_number = Column(String(20), nullable=False)  # Hashed for privacy\n",
-        "    message = Column(Text, nullable=False)\n",
-        "    submission_id = Column(Integer, ForeignKey(\"submissions.id\"), nullable=True)\n",
-        "\n",
-        "    # SMS gateway details\n",
-        "    gateway_id = Column(String(100))\n",
-        "    cost = Column(Float)\n",
-        "    status = Column(String(20))  # received, processed, failed\n",
-        "\n",
-        "    # Timestamps\n",
-        "    created_at = Column(DateTime, default=datetime.utcnow)\n",
-        "\n",
-        "    def __repr__(self):\n",
-        "        return f\"<SMSSubmission {self.id}>\""
-      ]
-    }
-  ]
-}
+"""
+Database Models for People's Bill Platform
+SQLAlchemy models for all database tables
+"""
+
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, JSON
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+Base = declarative_base()
+
+class Submission(Base):
+    """Citizen submissions table"""
+    __tablename__ = "submissions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(Text, nullable=False)
+    region = Column(String(50), nullable=False, index=True)
+    age = Column(Integer, nullable=True)
+    occupation = Column(String(100), nullable=True)
+    language = Column(String(10), default="en")
+    
+    # Processing fields
+    status = Column(String(20), default="pending", index=True)  # pending, approved, rejected
+    cluster_id = Column(Integer, ForeignKey("clusters.id"), nullable=True)
+    
+    # Metadata
+    ip_address = Column(String(45), nullable=True)  # For rate limiting
+    user_agent = Column(String(200), nullable=True)
+    submission_method = Column(String(20), default="web")  # web, sms, ussd
+    
+    # Review tracking
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    review_notes = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    cluster = relationship("Cluster", back_populates="submissions")
+    reviewer = relationship("User", back_populates="reviewed_submissions")
+    
+    def __repr__(self):
+        return f"<Submission {self.id}: {self.content[:50]}...>"
+
+
+class Cluster(Base):
+    """AI-generated clusters of similar submissions"""
+    __tablename__ = "clusters"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    theme = Column(String(200), nullable=False)
+    summary = Column(Text, nullable=False)
+    representative_text = Column(Text)  # Most representative submission
+    
+    # ML fields
+    embedding_vector = Column(JSON)  # Store as JSON for simplicity in Phase 1
+    confidence_score = Column(Float, default=0.0)
+    keywords = Column(JSON)  # Top keywords for this cluster
+    
+    # Statistics
+    submission_count = Column(Integer, default=0)
+    regions_represented = Column(JSON)  # List of regions
+    avg_age = Column(Float, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    submissions = relationship("Submission", back_populates="cluster")
+    bill_clauses = relationship("BillClause", back_populates="cluster")
+    
+    def __repr__(self):
+        return f"<Cluster {self.id}: {self.theme}>"
+
+
+class BillClause(Base):
+    """Draft bill clauses generated from clusters"""
+    __tablename__ = "bill_clauses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    cluster_id = Column(Integer, ForeignKey("clusters.id"), nullable=False)
+    
+    # Clause content
+    section_number = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    rationale = Column(Text)  # Explanation of why this clause exists
+    
+    # Legal review
+    legal_review_status = Column(String(20), default="draft")  # draft, reviewed, approved
+    legal_reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    legal_review_notes = Column(Text)
+    
+    # Version control
+    version = Column(Integer, default=1)
+    previous_version = Column(Text)  # Store previous content
+    
+    # Public feedback
+    public_comments_enabled = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    cluster = relationship("Cluster", back_populates="bill_clauses")
+    votes = relationship("Vote", back_populates="clause")
+    edit_history = relationship("EditHistory", back_populates="clause")
+    legal_reviewer = relationship("User", back_populates="reviewed_clauses")
+    
+    def __repr__(self):
+        return f"<BillClause {self.section_number}: {self.title}>"
+
+
+class User(Base):
+    """Admin and moderator users"""
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    
+    # Profile
+    full_name = Column(String(100))
+    role = Column(String(20), default="moderator")  # admin, moderator, legal_reviewer
+    organization = Column(String(100))  # e.g., "Ghana Bar Association"
+    
+    # Activity tracking
+    last_login = Column(DateTime)
+    login_count = Column(Integer, default=0)
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    reviewed_submissions = relationship("Submission", back_populates="reviewer")
+    reviewed_clauses = relationship("BillClause", back_populates="legal_reviewer")
+    edit_history = relationship("EditHistory", back_populates="editor")
+    
+    def __repr__(self):
+        return f"<User {self.username}>"
+
+
+class Vote(Base):
+    """Public votes on bill clauses"""
+    __tablename__ = "votes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    clause_id = Column(Integer, ForeignKey("bill_clauses.id"), nullable=False)
+    
+    # Vote details
+    vote_value = Column(String(10), nullable=False)  # approve, reject, neutral
+    comment = Column(Text, nullable=True)
+    
+    # Voter info (anonymous but tracked for statistics)
+    region = Column(String(50), nullable=True)
+    voter_hash = Column(String(64))  # Hashed identifier to prevent duplicate votes
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    clause = relationship("BillClause", back_populates="votes")
+    
+    def __repr__(self):
+        return f"<Vote {self.id}: {self.vote_value}>"
+
+
+class Region(Base):
+    """Ghana's 16 regions for tracking"""
+    __tablename__ = "regions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, nullable=False)
+    code = Column(String(10), unique=True, nullable=False)
+    capital = Column(String(50))
+    population = Column(Integer)  # For representation weighting
+    
+    # Statistics
+    submission_count = Column(Integer, default=0)
+    last_submission = Column(DateTime, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<Region {self.name}>"
+
+
+class EditHistory(Base):
+    """Track all edits to bill clauses"""
+    __tablename__ = "edit_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    clause_id = Column(Integer, ForeignKey("bill_clauses.id"), nullable=False)
+    editor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Change details
+    field_changed = Column(String(50))  # title, content, section_number
+    old_value = Column(Text)
+    new_value = Column(Text)
+    change_reason = Column(Text)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    clause = relationship("BillClause", back_populates="edit_history")
+    editor = relationship("User", back_populates="edit_history")
+    
+    def __repr__(self):
+        return f"<EditHistory {self.id}: {self.field_changed}>"
+
+
+class SystemLog(Base):
+    """System activity logging"""
+    __tablename__ = "system_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Log details
+    action = Column(String(100), nullable=False)
+    description = Column(Text)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    ip_address = Column(String(45))
+    
+    # Additional data
+    metadata = Column(JSON)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<SystemLog {self.id}: {self.action}>"
+
+
+class SMSSubmission(Base):
+    """Track SMS submissions (Phase 2)"""
+    __tablename__ = "sms_submissions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String(20), nullable=False)  # Hashed for privacy
+    message = Column(Text, nullable=False)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=True)
+    
+    # SMS gateway details
+    gateway_id = Column(String(100))
+    cost = Column(Float)
+    status = Column(String(20))  # received, processed, failed
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<SMSSubmission {self.id}>"
