@@ -47,6 +47,9 @@ class Bill(Base):
         back_populates="bill",
         cascade="all, delete-orphan",
     )
+    submissions = relationship("Submission", back_populates="bill")
+    clusters = relationship("Cluster", back_populates="bill")
+    clauses = relationship("BillClause", back_populates="bill")
 
     def __repr__(self):
         return f"<Bill {self.id}: {self.slug}>"
@@ -87,14 +90,15 @@ class BillSignature(Base):
 class Submission(Base):
     """Citizen submissions table"""
     __tablename__ = "submissions"
-    
+
     id = Column(Integer, primary_key=True, index=True)
+    bill_id = Column(Integer, ForeignKey("bills.id"), nullable=False, index=True)
     content = Column(Text, nullable=False)
     region = Column(String(50), nullable=False, index=True)
     age = Column(Integer, nullable=True)
     occupation = Column(String(100), nullable=True)
     language = Column(String(10), default="en")
-    
+
     # Processing fields
     status = Column(String(20), default="pending", index=True)  # pending, approved, rejected
     cluster_id = Column(Integer, ForeignKey("clusters.id"), nullable=True)
@@ -114,9 +118,10 @@ class Submission(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
+    bill = relationship("Bill", back_populates="submissions")
     cluster = relationship("Cluster", back_populates="submissions")
     reviewer = relationship("User", back_populates="reviewed_submissions")
-    
+
     def __repr__(self):
         return f"<Submission {self.id}: {self.content[:50]}...>"
 
@@ -124,8 +129,9 @@ class Submission(Base):
 class Cluster(Base):
     """AI-generated clusters of similar submissions"""
     __tablename__ = "clusters"
-    
+
     id = Column(Integer, primary_key=True, index=True)
+    bill_id = Column(Integer, ForeignKey("bills.id"), nullable=False, index=True)
     theme = Column(String(200), nullable=False)
     summary = Column(Text, nullable=False)
     representative_text = Column(Text)  # Most representative submission
@@ -145,9 +151,10 @@ class Cluster(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
+    bill = relationship("Bill", back_populates="clusters")
     submissions = relationship("Submission", back_populates="cluster")
     bill_clauses = relationship("BillClause", back_populates="cluster")
-    
+
     def __repr__(self):
         return f"<Cluster {self.id}: {self.theme}>"
 
@@ -155,8 +162,9 @@ class Cluster(Base):
 class BillClause(Base):
     """Draft bill clauses generated from clusters"""
     __tablename__ = "bill_clauses"
-    
+
     id = Column(Integer, primary_key=True, index=True)
+    bill_id = Column(Integer, ForeignKey("bills.id"), nullable=False, index=True)
     cluster_id = Column(Integer, ForeignKey("clusters.id"), nullable=False)
     
     # Clause content
@@ -182,11 +190,12 @@ class BillClause(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
+    bill = relationship("Bill", back_populates="clauses")
     cluster = relationship("Cluster", back_populates="bill_clauses")
     votes = relationship("Vote", back_populates="clause")
     edit_history = relationship("EditHistory", back_populates="clause")
     legal_reviewer = relationship("User", back_populates="reviewed_clauses")
-    
+
     def __repr__(self):
         return f"<BillClause {self.section_number}: {self.title}>"
 
