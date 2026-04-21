@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, get_moderator_user
 from database import get_db
-from models import Bill, BillSignature, User
+from models import Bill, BillClause, BillSignature, Cluster, Submission, User
 
 
 router = APIRouter(prefix="/api/bills", tags=["bills"])
@@ -98,6 +98,80 @@ class BillVerifyRequest(BaseModel):
     # Placeholder — step 4 will add a `code` field and validate it against an
     # OTP provider. For now any call verifies the signature.
     pass
+
+
+GHANA_REGIONS = {
+    "Greater Accra", "Ashanti", "Western", "Eastern", "Central",
+    "Volta", "Oti", "Northern", "North East", "Savannah",
+    "Upper East", "Upper West", "Bono", "Bono East", "Ahafo", "Western North",
+}
+
+
+class SubmissionCreate(BaseModel):
+    content: str = Field(..., min_length=10, max_length=5000)
+    region: str
+    age: Optional[int] = None
+    occupation: Optional[str] = None
+    language: str = "en"
+
+    @validator("region")
+    def valid_region(cls, v):
+        if v not in GHANA_REGIONS:
+            raise ValueError(f"Invalid region: {v}")
+        return v
+
+
+class SubmissionResponse(BaseModel):
+    id: int
+    bill_id: int
+    content: str
+    region: str
+    status: str
+    cluster_id: Optional[int]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ClusterResponse(BaseModel):
+    id: int
+    bill_id: int
+    theme: str
+    summary: str
+    representative_text: Optional[str]
+    submission_count: int
+    confidence_score: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ClauseResponse(BaseModel):
+    id: int
+    bill_id: int
+    section_number: int
+    title: str
+    content: str
+    rationale: Optional[str]
+    cluster_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FullBillResponse(BaseModel):
+    slug: str
+    title: str
+    summary: str
+    stage: str
+    total_sections: int
+    full_text: str
+    clauses: List[ClauseResponse]
+    last_updated: datetime
 
 
 # ============== Helpers ==============
@@ -322,3 +396,127 @@ def promote_bill(
     db.commit()
     db.refresh(bill)
     return bill
+
+
+# ============== Per-bill content endpoints ==============
+#
+# These replace the hardcoded-bill endpoints in main.py (`/api/submissions`,
+# `/api/clusters`, `/api/bill/full`) by scoping everything under a slug. The
+# rendered document reads its title and preamble from the Bill row instead of
+# the "THE PEOPLE'S BILL ON REVERSE BURDEN" string literal.
+
+
+@router.get("/{slug}/submissions", response_model=List[SubmissionResponse])
+def list_submissions(
+    slug: str,
+    skip: int = 0,
+    limit: int = 100,
+    region: Optional[str] = None,
+    submission_status: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    bill = _get_bill_or_404(db, slug)
+    query = db.query(Submission).filter(Submission.bill_id == bill.id)
+    if region is not None:
+        query = query.filter(Submission.region == region)
+    if submission_status is not None:
+        query = query.filter(Submission.status == submission_status)
+    return (
+        query.order_by(Submission.created_at.desc()).offset(skip).limit(limit).all()
+    )
+
+
+@router.post(
+    "/{slug}/submissions",
+    response_model=SubmissionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_submission(
+    slug: str,
+    payload: SubmissionCreate,
+    db: Session = Depends(get_db),
+):
+    bill = _get_bill_or_404(db, slug)
+    if bill.stage not in (STAGE_DRAFTING, STAGE_GATHERING):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot submit input: bill is in stage '{bill.stage}'. "
+                "Submissions are accepted during gathering_signatures (early "
+                "input) and drafting."
+            ),
+        )
+
+    submission = Submission(
+        bill_id=bill.id,
+        content=payload.content,
+        region=payload.region,
+        age=payload.age,
+        occupation=payload.occupation,
+        language=payload.language,
+        status="pending",
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    return submission
+
+
+@router.get("/{slug}/clusters", response_model=List[ClusterResponse])
+def list_clusters(slug: str, db: Session = Depends(get_db)):
+    bill = _get_bill_or_404(db, slug)
+    clusters = (
+        db.query(Cluster)
+        .filter(Cluster.bill_id == bill.id)
+        .order_by(Cluster.submission_count.desc())
+        .all()
+    )
+    return clusters
+
+
+@router.get("/{slug}/clauses", response_model=List[ClauseResponse])
+def list_clauses(slug: str, db: Session = Depends(get_db)):
+    bill = _get_bill_or_404(db, slug)
+    return (
+        db.query(BillClause)
+        .filter(BillClause.bill_id == bill.id)
+        .order_by(BillClause.section_number)
+        .all()
+    )
+
+
+@router.get("/{slug}/full", response_model=FullBillResponse)
+def get_full_bill(slug: str, db: Session = Depends(get_db)):
+    """Render the full bill document from the Bill row and its clauses.
+
+    The title and preamble come from the `bills` table, not a hardcoded
+    constant — that's the whole point of step 5.
+    """
+    bill = _get_bill_or_404(db, slug)
+    clauses = (
+        db.query(BillClause)
+        .filter(BillClause.bill_id == bill.id)
+        .order_by(BillClause.section_number)
+        .all()
+    )
+
+    parts = [bill.title.upper(), ""]
+    if bill.preamble:
+        parts.extend([bill.preamble, ""])
+    else:
+        parts.extend([bill.summary, ""])
+    for clause in clauses:
+        parts.append(f"SECTION {clause.section_number}: {clause.title}")
+        parts.append(clause.content)
+        parts.append("")
+
+    return FullBillResponse(
+        slug=bill.slug,
+        title=bill.title,
+        summary=bill.summary,
+        stage=bill.stage,
+        total_sections=len(clauses),
+        full_text="\n".join(parts).rstrip() + "\n",
+        clauses=clauses,
+        last_updated=bill.updated_at or bill.created_at,
+    )
