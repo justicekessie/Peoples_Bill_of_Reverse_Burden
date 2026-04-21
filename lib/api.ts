@@ -59,6 +59,44 @@ export type LoginResponse = {
   }
 }
 
+export type BillStage =
+  | 'proposed'
+  | 'gathering_signatures'
+  | 'drafting'
+  | 'finalized'
+  | 'archived'
+
+export type Bill = {
+  id: number
+  slug: string
+  title: string
+  summary: string
+  stage: BillStage
+  signature_threshold: number
+  signature_count: number
+  originator_user_id: number | null
+  created_at: string
+  promoted_to_drafting_at: string | null
+}
+
+export type BillCreateInput = {
+  title: string
+  summary: string
+}
+
+export type BillSignInput = {
+  identifier: string
+  identifier_type: 'phone' | 'email' | 'national_id'
+  region?: string
+}
+
+export type BillSignResponse = {
+  signature_id: number
+  bill_id: number
+  verified: boolean
+  message: string
+}
+
 export async function getStats() {
   const response = await api.get<StatsResponse>('/api/stats')
   return response.data
@@ -90,6 +128,36 @@ export function getCurrentUser() {
 
   const user = window.localStorage.getItem('user')
   return user ? JSON.parse(user) : null
+}
+
+export async function listBills(stage?: BillStage) {
+  const response = await api.get<Bill[]>('/api/bills', {
+    params: stage ? { stage } : undefined,
+  })
+  return response.data
+}
+
+export async function getBill(slug: string) {
+  const response = await api.get<Bill>(`/api/bills/${slug}`)
+  return response.data
+}
+
+export async function createBill(input: BillCreateInput) {
+  const response = await api.post<Bill>('/api/bills', input)
+  return response.data
+}
+
+export async function signBill(slug: string, input: BillSignInput) {
+  const response = await api.post<BillSignResponse>(`/api/bills/${slug}/sign`, input)
+  return response.data
+}
+
+export async function verifySignature(slug: string, signatureId: number) {
+  const response = await api.post<BillSignResponse>(
+    `/api/bills/${slug}/signatures/${signatureId}/verify`,
+    {},
+  )
+  return response.data
 }
 
 export default api
