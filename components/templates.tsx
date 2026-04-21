@@ -222,7 +222,7 @@ export function HomeTemplate() {
       <section className="relative overflow-hidden bg-ghana-dark text-white">
         <div className="absolute inset-0 hero-grid" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,26,16,0.42)_0%,rgba(8,26,16,0.72)_100%)]" />
-        <div className="hero-star absolute -right-10 top-[-36px] h-[360px] w-[360px] bg-ghana-gold/10" />
+        <div className="hero-star absolute -right-10 top-[-36px] h-[360px] w-[360px] bg-black/20" />
         <div className="absolute -left-32 top-24 h-80 w-80 rounded-full bg-ghana-green/10 blur-3xl" />
         <div className="mx-auto max-w-[1120px] px-4 py-16 sm:px-6 lg:px-10 lg:py-20">
           <div className="relative z-10 max-w-3xl">

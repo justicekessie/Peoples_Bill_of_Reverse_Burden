@@ -21,20 +21,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/bill/page.js"
     ],
-    "/stats/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/stats/page.js"
-    ],
     "/admin/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/admin/page.js"
     ],
-    "/open-source/page": [
+    "/stats/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/open-source/page.js"
+      "static/chunks/app/stats/page.js"
     ]
   }
 }

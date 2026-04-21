@@ -21,41 +21,40 @@ export function PageStripe() {
 export function SiteHeader() {
   return (
     <header className="sticky top-[5px] z-50 border-b border-border/80 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
-      <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-3 sm:px-4 lg:px-6">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-3 pr-2">
+      <div className="grid h-16 w-full grid-cols-[auto_1fr_auto] items-center px-4 sm:px-6 lg:px-8">
+        <div className="justify-self-start">
+          <Link href="/" className="flex items-center gap-3">
             <div className="flex gap-[2px]">
               <span className="h-8 w-[3px] rounded-[1px] bg-ghana-red" />
               <span className="h-8 w-[3px] rounded-[1px] bg-ghana-gold" />
               <span className="h-8 w-[3px] rounded-[1px] bg-ghana-green" />
             </div>
             <div>
-              <div className="font-serif text-[33px] font-semibold leading-none text-ghana-dark">People's Bill</div>
-              <div className="pt-[2px] text-[10px] font-medium uppercase tracking-[0.24em] text-ghana-muted">Reverse Burden Act</div>
+              <div className="font-serif text-lg font-bold leading-none text-ghana-dark">People's Bill</div>
             </div>
           </Link>
-          <nav className="hidden items-center gap-1 md:flex">
-            {publicNav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-md px-3 py-2 text-sm font-medium text-ghana-muted transition-colors hover:bg-ghana-cream hover:text-ghana-ink"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
         </div>
 
-        <div className="ml-auto flex items-center gap-3 pr-1">
-          <span className="hidden h-10 items-center rounded-full border border-[#95cdb5] bg-[#d6e7df] px-4 text-[27px] font-semibold text-ghana-green md:inline-flex">
-            Ghana 2025
-          </span>
-          <Button variant="outline" size="sm" className="hidden h-10 rounded-xl border-[#cbcfcb] bg-[#f4f4f4] px-5 text-[27px] font-semibold text-[#2f3a35] hover:bg-[#ececec] sm:inline-flex">
-            English
-          </Button>
-          <Button variant="primary" size="sm" className="hidden h-10 rounded-xl bg-ghana-green px-5 text-[27px] font-semibold text-white hover:bg-ghana-dark sm:inline-flex">
-            Submit Input
+        <nav className="hidden items-center justify-center gap-1 md:flex">
+          {publicNav.map((item, index) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                index === 0
+                  ? 'bg-ghana-cream text-ghana-green'
+                  : 'text-ghana-muted hover:bg-ghana-cream hover:text-ghana-ink',
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="justify-self-end">
+          <Button variant="primary" size="sm" className="hidden h-10 rounded-lg bg-ghana-green px-6 text-sm font-semibold text-white hover:bg-ghana-dark sm:inline-flex">
+            Submit Your Input
             <ChevronRight className="h-4 w-4" />
           </Button>
           <button className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-white text-ghana-ink transition-colors hover:bg-ghana-cream md:hidden">

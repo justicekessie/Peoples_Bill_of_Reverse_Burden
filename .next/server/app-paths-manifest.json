@@ -2,6 +2,6 @@
   "/page": "app/page.js",
   "/submit/page": "app/submit/page.js",
   "/admin/page": "app/admin/page.js",
-  "/open-source/page": "app/open-source/page.js",
+  "/stats/page": "app/stats/page.js",
   "/bill/page": "app/bill/page.js"
 }
