@@ -3,12 +3,86 @@ Database Models for People's Bill Platform
 SQLAlchemy models for all database tables
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
 Base = declarative_base()
+
+
+class Bill(Base):
+    """A bill being drafted on the platform.
+
+    Phase 1 of the multi-bill refactor. A bill starts as a citizen "proposed"
+    subject, moves to "gathering_signatures" once a moderator confirms the
+    subject is in scope, and is promoted to "drafting" once it crosses the
+    signature threshold (default 100).
+    """
+    __tablename__ = "bills"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(100), unique=True, nullable=False, index=True)
+    title = Column(String(300), nullable=False)
+    summary = Column(Text, nullable=False)
+    preamble = Column(Text, nullable=True)
+
+    originator_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    stage = Column(String(30), default="proposed", nullable=False, index=True)
+
+    signature_threshold = Column(Integer, default=100, nullable=False)
+    signature_count = Column(Integer, default=0, nullable=False)
+
+    promoted_to_drafting_at = Column(DateTime, nullable=True)
+    finalized_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    originator = relationship("User", foreign_keys=[originator_user_id])
+    signatures = relationship(
+        "BillSignature",
+        back_populates="bill",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self):
+        return f"<Bill {self.id}: {self.slug}>"
+
+
+class BillSignature(Base):
+    """Signature on a bill proposal.
+
+    Citizens sign to move a proposal out of the "gathering_signatures" stage.
+    `signer_hash` is a hash of an identifier (phone/email/national ID) so the
+    same person cannot sign the same bill twice. Phone OTP is the recommended
+    verification method to mitigate sybil attacks.
+    """
+    __tablename__ = "bill_signatures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bill_id = Column(Integer, ForeignKey("bills.id"), nullable=False, index=True)
+
+    signer_hash = Column(String(64), nullable=False, index=True)
+    region = Column(String(50), nullable=True, index=True)
+
+    verified = Column(Boolean, default=False, nullable=False)
+    verification_method = Column(String(20), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    bill = relationship("Bill", back_populates="signatures")
+
+    __table_args__ = (
+        UniqueConstraint("bill_id", "signer_hash", name="uq_bill_signer"),
+    )
+
+    def __repr__(self):
+        return f"<BillSignature bill={self.bill_id} verified={self.verified}>"
+
 
 class Submission(Base):
     """Citizen submissions table"""
