@@ -1,0 +1,1 @@
+export { StatsTemplate as default } from '../../components/templates'

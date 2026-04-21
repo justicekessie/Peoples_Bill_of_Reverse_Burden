@@ -1,0 +1,1 @@
+export { BillTemplate as default } from '../../components/templates'

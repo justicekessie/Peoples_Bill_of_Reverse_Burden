@@ -1,0 +1,1 @@
+export { SubmitTemplate as default } from '../../components/templates'

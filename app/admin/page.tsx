@@ -1,0 +1,1 @@
+export { AdminTemplate as default } from '../../components/templates'

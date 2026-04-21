@@ -1,0 +1,7 @@
+{
+  "/page": "app/page.js",
+  "/submit/page": "app/submit/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/open-source/page": "app/open-source/page.js",
+  "/bill/page": "app/bill/page.js"
+}

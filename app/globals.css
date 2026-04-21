@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 248 244 236;
+    --foreground: 26 26 26;
+    --card: 255 253 248;
+    --card-foreground: 26 26 26;
+    --border: 232 227 216;
+    --input: 232 227 216;
+    --ring: 0 107 63;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ghana-cream text-ghana-ink;
+    font-family: var(--font-sans), system-ui, sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  ::selection {
+    background: rgba(0, 107, 63, 0.16);
+    color: #081a10;
+  }
+}
+
+@layer components {
+  .kente-stripe {
+    background: repeating-linear-gradient(
+      90deg,
+      #006b3f 0,
+      #006b3f 25%,
+      #fcd116 25%,
+      #fcd116 50%,
+      #ce1126 50%,
+      #ce1126 75%,
+      #111111 75%,
+      #111111 100%
+    );
+    background-size: 80px 100%;
+  }
+
+  .hero-grid {
+    background-image: linear-gradient(rgba(8, 26, 16, 0.22), rgba(8, 26, 16, 0.22)),
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 46px,
+        rgba(0, 107, 63, 0.22) 46px,
+        rgba(0, 107, 63, 0.22) 48px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 46px,
+        rgba(0, 107, 63, 0.22) 46px,
+        rgba(0, 107, 63, 0.22) 48px
+      );
+    background-size: 100% 100%, 48px 48px, 48px 48px;
+  }
+
+  .hero-star {
+    clip-path: polygon(
+      50% 0%,
+      61% 35%,
+      98% 35%,
+      68% 57%,
+      79% 91%,
+      50% 70%,
+      21% 91%,
+      32% 57%,
+      2% 35%,
+      39% 35%
+    );
+  }
+}
+
+@layer utilities {
+  .text-serif {
+    font-family: var(--font-serif), Georgia, serif;
+  }
+}
