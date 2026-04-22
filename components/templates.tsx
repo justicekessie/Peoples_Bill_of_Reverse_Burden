@@ -935,11 +935,16 @@ export function StatsTemplate() {
 
 export function AdminTemplate() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'statistics' | 'auth'>('dashboard')
-  const [signedIn, setSignedIn] = useState(false)
+  // Temporary: set NEXT_PUBLIC_BYPASS_ADMIN_AUTH=true in .env.local to skip the
+  // sign-in gate while previewing the admin UI. Remove this flag once the new
+  // Next.js auth is in place.
+  const bypassAuth = process.env.NEXT_PUBLIC_BYPASS_ADMIN_AUTH === 'true'
+  const [signedIn, setSignedIn] = useState(bypassAuth)
 
   useEffect(() => {
+    if (bypassAuth) return
     setSignedIn(isAuthenticated())
-  }, [])
+  }, [bypassAuth])
 
   if (!signedIn) {
     return <AdminGate onSignedIn={() => setSignedIn(true)} />
