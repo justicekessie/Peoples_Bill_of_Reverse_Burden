@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 
 import { useBill } from '@/hooks/useBills'
+import { useClauses } from '@/hooks/useClauses'
 import {
   Badge,
   Button,
@@ -12,6 +13,7 @@ import {
   CardHeader,
   ProgressBar,
 } from '@/components/ui'
+import { ClauseVoteCard } from '@/components/clause-vote-card'
 import type { BillStage } from '@/lib/api'
 
 const STAGE_TONE: Record<BillStage, 'neutral' | 'gold' | 'green' | 'dark' | 'red'> = {
@@ -103,17 +105,55 @@ export default function BillDetailPage() {
         </Card>
       ) : null}
 
-      {bill.stage === 'drafting' ? (
-        <Card className="mt-10">
+      {bill.stage === 'drafting' || bill.stage === 'finalized' ? (
+        <ClausesSection slug={bill.slug} stage={bill.stage} />
+      ) : null}
+    </main>
+  )
+}
+
+function ClausesSection({ slug, stage }: { slug: string; stage: BillStage }) {
+  const { data: clauses, isLoading, error } = useClauses(slug)
+
+  return (
+    <section className="mt-10 space-y-4">
+      <div>
+        <h2 className="font-serif text-2xl font-bold text-ghana-dark">
+          {stage === 'finalized' ? 'Final clauses' : 'Draft clauses'}
+        </h2>
+        <p className="mt-2 text-sm text-ghana-muted">
+          {stage === 'finalized'
+            ? 'This bill is finalized. Your feedback is still recorded for the legislative record.'
+            : 'Read each clause and tell us whether it should stay as drafted. One vote per clause.'}
+        </p>
+      </div>
+
+      {isLoading ? (
+        <Card>
           <CardBody>
-            <p className="text-sm text-ghana-muted">
-              This bill passed its signature threshold and is now being drafted. Public
-              input on clauses is welcome.
+            <p className="text-sm text-ghana-muted">Loading clauses…</p>
+          </CardBody>
+        </Card>
+      ) : error ? (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-ghana-red">
+              Could not load clauses. Please refresh in a moment.
             </p>
           </CardBody>
         </Card>
-      ) : null}
-    </main>
+      ) : !clauses || clauses.length === 0 ? (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-ghana-muted">
+              No clauses have been drafted yet. Check back soon.
+            </p>
+          </CardBody>
+        </Card>
+      ) : (
+        clauses.map((clause) => <ClauseVoteCard key={clause.id} slug={slug} clause={clause} />)
+      )}
+    </section>
   )
 }
 

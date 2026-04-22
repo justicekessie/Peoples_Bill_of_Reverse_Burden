@@ -5,9 +5,13 @@ import {
   ClauseUpdateInput,
   Cluster,
   Submission,
+  VoteInput,
+  VoteStats,
+  getClauseVoteStats,
   listBillSubmissions,
   listClauses,
   listClusters,
+  submitClauseVote,
   updateClause,
 } from '../lib/api'
 
@@ -47,6 +51,25 @@ export function useUpdateClause(slug: string) {
       queryClient.setQueryData<Clause[] | undefined>(['clauses', slug], (prev) =>
         prev ? prev.map((existing) => (existing.id === clause.id ? clause : existing)) : prev,
       )
+    },
+  })
+}
+
+export function useClauseVoteStats(slug: string | undefined, clauseId: number | undefined) {
+  return useQuery<VoteStats>({
+    queryKey: ['clause-votes', slug, clauseId],
+    queryFn: () => getClauseVoteStats(slug as string, clauseId as number),
+    enabled: !!slug && !!clauseId,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useSubmitClauseVote(slug: string, clauseId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: VoteInput) => submitClauseVote(slug, clauseId, input),
+    onSuccess: (stats) => {
+      queryClient.setQueryData(['clause-votes', slug, clauseId], stats)
     },
   })
 }

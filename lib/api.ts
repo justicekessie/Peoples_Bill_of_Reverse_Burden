@@ -237,4 +237,52 @@ export async function updateClause(slug: string, clauseId: number, input: Clause
   return response.data
 }
 
+export type VoteValue = 'approve' | 'reject' | 'neutral'
+
+export type VoterIdentifierType = 'phone' | 'email' | 'national_id'
+
+export type VoteInput = {
+  vote_value: VoteValue
+  identifier: string
+  identifier_type: VoterIdentifierType
+  region?: string
+  comment?: string
+}
+
+export type CommentItem = {
+  id: number
+  clause_id: number
+  vote_value: VoteValue
+  comment: string | null
+  region: string | null
+  created_at: string
+}
+
+export type VoteStats = {
+  clause_id: number
+  total: number
+  approve: number
+  reject: number
+  neutral: number
+  approval_rate: number
+  comment_count: number
+  comments_enabled: boolean
+  recent_comments: CommentItem[]
+}
+
+export async function getClauseVoteStats(slug: string, clauseId: number) {
+  const response = await api.get<VoteStats>(
+    `/api/bills/${slug}/clauses/${clauseId}/votes/stats`,
+  )
+  return response.data
+}
+
+export async function submitClauseVote(slug: string, clauseId: number, input: VoteInput) {
+  const response = await api.post<VoteStats>(
+    `/api/bills/${slug}/clauses/${clauseId}/votes`,
+    input,
+  )
+  return response.data
+}
+
 export default api

@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, get_moderator_user
 from database import get_db
-from models import Bill, BillClause, BillSignature, Cluster, EditHistory, Submission, User
+from models import Bill, BillClause, BillSignature, Cluster, EditHistory, Submission, User, Vote
 
 
 router = APIRouter(prefix="/api/bills", tags=["bills"])
@@ -184,6 +184,60 @@ class ClauseUpdate(BaseModel):
                 f"Must be one of {sorted(LEGAL_REVIEW_STATUSES)}"
             )
         return v
+
+
+VOTE_VALUES = {"approve", "reject", "neutral"}
+
+
+class VoteCreate(BaseModel):
+    vote_value: str
+    identifier: str = Field(..., min_length=5, max_length=200)
+    identifier_type: str = Field(..., pattern="^(phone|email|national_id)$")
+    region: Optional[str] = None
+    comment: Optional[str] = Field(None, max_length=2000)
+
+    @validator("vote_value")
+    def valid_vote_value(cls, v):
+        if v not in VOTE_VALUES:
+            raise ValueError(
+                f"Invalid vote_value: {v}. Must be one of {sorted(VOTE_VALUES)}"
+            )
+        return v
+
+    @validator("identifier")
+    def strip_identifier(cls, v):
+        return v.strip().lower()
+
+    @validator("comment")
+    def trim_comment(cls, v):
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
+
+
+class VoteResponse(BaseModel):
+    id: int
+    clause_id: int
+    vote_value: str
+    comment: Optional[str]
+    region: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class VoteStatsResponse(BaseModel):
+    clause_id: int
+    total: int
+    approve: int
+    reject: int
+    neutral: int
+    approval_rate: float
+    comment_count: int
+    comments_enabled: bool
+    recent_comments: List[VoteResponse]
 
 
 class FullBillResponse(BaseModel):
@@ -587,6 +641,124 @@ def update_clause(
     db.commit()
     db.refresh(clause)
     return clause
+
+
+def _get_clause_or_404(db: Session, bill: Bill, clause_id: int) -> BillClause:
+    clause = (
+        db.query(BillClause)
+        .filter(BillClause.id == clause_id, BillClause.bill_id == bill.id)
+        .first()
+    )
+    if clause is None:
+        raise HTTPException(status_code=404, detail="Clause not found")
+    return clause
+
+
+def _compute_vote_stats(
+    db: Session, clause: BillClause, recent_comment_limit: int = 10
+) -> VoteStatsResponse:
+    votes = db.query(Vote).filter(Vote.clause_id == clause.id).all()
+    counts = {"approve": 0, "reject": 0, "neutral": 0}
+    comment_count = 0
+    for vote in votes:
+        counts[vote.vote_value] = counts.get(vote.vote_value, 0) + 1
+        if vote.comment:
+            comment_count += 1
+    total = len(votes)
+    decisive = counts["approve"] + counts["reject"]
+    approval_rate = (counts["approve"] / decisive * 100.0) if decisive else 0.0
+
+    recent_comments = (
+        db.query(Vote)
+        .filter(Vote.clause_id == clause.id, Vote.comment.isnot(None))
+        .order_by(Vote.created_at.desc())
+        .limit(recent_comment_limit)
+        .all()
+    )
+
+    return VoteStatsResponse(
+        clause_id=clause.id,
+        total=total,
+        approve=counts["approve"],
+        reject=counts["reject"],
+        neutral=counts["neutral"],
+        approval_rate=round(approval_rate, 1),
+        comment_count=comment_count,
+        comments_enabled=bool(clause.public_comments_enabled),
+        recent_comments=recent_comments,
+    )
+
+
+@router.get(
+    "/{slug}/clauses/{clause_id}/votes/stats",
+    response_model=VoteStatsResponse,
+)
+def get_clause_vote_stats(slug: str, clause_id: int, db: Session = Depends(get_db)):
+    bill = _get_bill_or_404(db, slug)
+    clause = _get_clause_or_404(db, bill, clause_id)
+    return _compute_vote_stats(db, clause)
+
+
+@router.post(
+    "/{slug}/clauses/{clause_id}/votes",
+    response_model=VoteStatsResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_clause_vote(
+    slug: str,
+    clause_id: int,
+    payload: VoteCreate,
+    db: Session = Depends(get_db),
+):
+    """Record one public vote on a clause.
+
+    The voter's identifier is hashed so the same person can't double-vote on a
+    clause. Comments are accepted only when the clause has public comments
+    enabled. Returns the updated vote stats for the clause so clients can
+    refresh without a second round-trip.
+    """
+    bill = _get_bill_or_404(db, slug)
+    if bill.stage not in (STAGE_DRAFTING, STAGE_FINALIZED):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot vote: bill is in stage '{bill.stage}'. "
+                "Voting is open during drafting and finalized review."
+            ),
+        )
+
+    clause = _get_clause_or_404(db, bill, clause_id)
+
+    if payload.comment and not clause.public_comments_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="Comments are disabled on this clause.",
+        )
+
+    voter_hash = _hash_identifier(payload.identifier_type, payload.identifier)
+
+    existing = (
+        db.query(Vote)
+        .filter(Vote.clause_id == clause.id, Vote.voter_hash == voter_hash)
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="This identifier has already voted on this clause.",
+        )
+
+    vote = Vote(
+        clause_id=clause.id,
+        vote_value=payload.vote_value,
+        comment=payload.comment,
+        region=payload.region,
+        voter_hash=voter_hash,
+    )
+    db.add(vote)
+    db.commit()
+
+    return _compute_vote_stats(db, clause)
 
 
 @router.get("/{slug}/full", response_model=FullBillResponse)
