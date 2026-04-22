@@ -57,7 +57,7 @@ export const publicNav = [
 
 export const secureNav = [
   { label: 'Dashboard', href: '/admin' },
-  { label: 'Editor', href: '/admin' },
+  { label: 'Editor', href: '/admin/editor' },
   { label: 'Statistics', href: '/admin' },
   { label: 'Auth', href: '/admin' },
 ]

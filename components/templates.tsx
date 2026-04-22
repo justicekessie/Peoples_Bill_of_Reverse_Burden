@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, ChevronRight, FileText, Shield, Sparkles, Users, Vote } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { authHighlights, dashboardActivity, dashboardMetrics, editorSections, ghanaRegions, homeFeatures, workflowSteps, settingsGroups, secureNav } from '../lib/design-system'
-import { adminLogin, isAuthenticated, type StatsResponse } from '../lib/api'
+import { adminLogin, isAuthenticated, type Clause, type LegalReviewStatus, type StatsResponse } from '../lib/api'
 import { useStats } from '../hooks/useStats'
+import { useClauses, useClusters, useClusterSubmissions, useUpdateClause } from '../hooks/useClauses'
 import { Badge, Button, Card, CardBody, CardFooter, ProgressBar, SectionHeading, StatCard, Input, Label, Select, Textarea } from './ui'
 import { AuthShell, DashboardShell, GhanaFlag, PublicShell } from './layout'
 
@@ -933,6 +934,350 @@ export function StatsTemplate() {
   )
 }
 
+const LEGAL_REVIEW_TONE: Record<LegalReviewStatus, 'neutral' | 'gold' | 'green'> = {
+  draft: 'neutral',
+  reviewed: 'gold',
+  approved: 'green',
+}
+
+type ClauseDraft = {
+  title: string
+  content: string
+  rationale: string
+  legal_review_status: LegalReviewStatus
+}
+
+function toDraft(clause: Clause): ClauseDraft {
+  return {
+    title: clause.title,
+    content: clause.content,
+    rationale: clause.rationale ?? '',
+    legal_review_status: clause.legal_review_status,
+  }
+}
+
+export function ClauseEditorPanel({ billSlug }: { billSlug: string }) {
+  const clausesQuery = useClauses(billSlug)
+  const clustersQuery = useClusters(billSlug)
+  const updateClause = useUpdateClause(billSlug)
+
+  const clauses = clausesQuery.data ?? []
+  const clusters = clustersQuery.data ?? []
+
+  const [selectedClauseId, setSelectedClauseId] = useState<number | null>(null)
+  const [draft, setDraft] = useState<ClauseDraft | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+
+  useEffect(() => {
+    if (selectedClauseId === null && clauses.length > 0) {
+      setSelectedClauseId(clauses[0].id)
+    }
+  }, [clauses, selectedClauseId])
+
+  const selectedClause = useMemo(
+    () => clauses.find((clause) => clause.id === selectedClauseId) ?? null,
+    [clauses, selectedClauseId],
+  )
+
+  useEffect(() => {
+    if (selectedClause) {
+      setDraft(toDraft(selectedClause))
+      setSaveError(null)
+    } else {
+      setDraft(null)
+    }
+  }, [selectedClause?.id, selectedClause?.updated_at])
+
+  const submissionsQuery = useClusterSubmissions(billSlug, selectedClause?.cluster_id)
+
+  const clusterById = useMemo(
+    () => Object.fromEntries(clusters.map((cluster) => [cluster.id, cluster])),
+    [clusters],
+  )
+
+  const clausesByClusterId = useMemo(() => {
+    const map = new Map<number, Clause>()
+    for (const clause of clauses) {
+      map.set(clause.cluster_id, clause)
+    }
+    return map
+  }, [clauses])
+
+  const isDirty = useMemo(() => {
+    if (!selectedClause || !draft) return false
+    const original = toDraft(selectedClause)
+    return (
+      draft.title !== original.title ||
+      draft.content !== original.content ||
+      draft.rationale !== original.rationale ||
+      draft.legal_review_status !== original.legal_review_status
+    )
+  }, [draft, selectedClause])
+
+  async function handleSave() {
+    if (!selectedClause || !draft) return
+    setSaveError(null)
+    try {
+      await updateClause.mutateAsync({
+        clauseId: selectedClause.id,
+        input: {
+          title: draft.title,
+          content: draft.content,
+          rationale: draft.rationale.trim() === '' ? null : draft.rationale,
+          legal_review_status: draft.legal_review_status,
+        },
+      })
+      setSavedAt(new Date())
+    } catch (error) {
+      const message =
+        (error as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
+        'Could not save clause. Check your connection and try again.'
+      setSaveError(message)
+    }
+  }
+
+  function handleReset() {
+    if (selectedClause) {
+      setDraft(toDraft(selectedClause))
+      setSaveError(null)
+    }
+  }
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+      <Card className="overflow-hidden">
+        <CardBody className="space-y-4">
+          <div>
+            <h3 className="font-serif text-xl font-bold text-ghana-dark">Themes</h3>
+            <p className="mt-1 text-sm text-ghana-muted">Clusters surfaced from citizen submissions.</p>
+          </div>
+          {clustersQuery.isLoading ? (
+            <div className="rounded-lg border border-border bg-ghana-paper px-3 py-3 text-sm text-ghana-muted">
+              Loading themes...
+            </div>
+          ) : clusters.length === 0 ? (
+            <div className="rounded-lg border border-border bg-ghana-paper px-3 py-3 text-sm text-ghana-muted">
+              No clusters yet. Run clustering once submissions are approved.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {clusters.map((cluster) => {
+                const clauseForCluster = clausesByClusterId.get(cluster.id)
+                const isActive = clauseForCluster?.id === selectedClauseId
+                return (
+                  <button
+                    key={cluster.id}
+                    type="button"
+                    onClick={() => clauseForCluster && setSelectedClauseId(clauseForCluster.id)}
+                    disabled={!clauseForCluster}
+                    className={`w-full rounded-lg border px-3 py-3 text-left transition-colors ${
+                      isActive
+                        ? 'border-ghana-green bg-ghana-green/10 text-ghana-dark'
+                        : 'border-border bg-ghana-paper text-ghana-ink hover:bg-ghana-cream disabled:opacity-60 disabled:hover:bg-ghana-paper'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium leading-tight">{cluster.theme}</span>
+                      {clauseForCluster ? (
+                        <Badge tone={LEGAL_REVIEW_TONE[clauseForCluster.legal_review_status]}>
+                          §{clauseForCluster.section_number}
+                        </Badge>
+                      ) : (
+                        <Badge tone="neutral">no clause</Badge>
+                      )}
+                    </div>
+                    <div className="mt-1 text-xs text-ghana-muted">
+                      {cluster.submission_count} submissions
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <div className="space-y-6">
+        <Card className="overflow-hidden">
+          <CardBody>
+            {clausesQuery.isLoading ? (
+              <div className="text-sm text-ghana-muted">Loading clauses...</div>
+            ) : clausesQuery.isError ? (
+              <div className="rounded-xl border border-ghana-red/20 bg-ghana-red/5 px-4 py-3 text-sm text-ghana-red">
+                Could not load clauses. Is the backend reachable?
+              </div>
+            ) : !selectedClause || !draft ? (
+              <div className="text-sm text-ghana-muted">
+                No clauses drafted yet. Create clauses from the admin dashboard after clustering.
+              </div>
+            ) : (
+              <>
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">
+                      Section {selectedClause.section_number}
+                    </p>
+                    <h3 className="mt-1 font-serif text-2xl font-bold text-ghana-dark">
+                      Clause editor
+                    </h3>
+                    <p className="mt-1 text-sm text-ghana-muted">
+                      {selectedClause.cluster_id && clusterById[selectedClause.cluster_id]
+                        ? `Backed by theme “${clusterById[selectedClause.cluster_id].theme}”.`
+                        : 'Linked cluster unavailable.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="gold">v{selectedClause.version}</Badge>
+                    <Badge tone={LEGAL_REVIEW_TONE[selectedClause.legal_review_status]}>
+                      {selectedClause.legal_review_status}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="clause-title">Clause title</Label>
+                    <Input
+                      id="clause-title"
+                      value={draft.title}
+                      onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="clause-content">Clause content</Label>
+                    <Textarea
+                      id="clause-content"
+                      rows={12}
+                      value={draft.content}
+                      onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="clause-rationale">Rationale</Label>
+                    <Textarea
+                      id="clause-rationale"
+                      rows={4}
+                      value={draft.rationale}
+                      placeholder="Why this clause exists — anchor the language to the citizen submissions."
+                      onChange={(event) => setDraft({ ...draft, rationale: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="clause-status">Legal review status</Label>
+                    <Select
+                      id="clause-status"
+                      value={draft.legal_review_status}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          legal_review_status: event.target.value as LegalReviewStatus,
+                        })
+                      }
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="reviewed">Reviewed</option>
+                      <option value="approved">Approved</option>
+                    </Select>
+                  </div>
+
+                  {saveError ? (
+                    <div className="rounded-xl border border-ghana-red/20 bg-ghana-red/5 px-4 py-3 text-sm text-ghana-red">
+                      {saveError}
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      onClick={handleSave}
+                      disabled={!isDirty || updateClause.isPending}
+                    >
+                      {updateClause.isPending ? 'Saving...' : 'Save revision'}
+                    </Button>
+                    <Button variant="outline" onClick={handleReset} disabled={!isDirty}>
+                      Reset
+                    </Button>
+                    {savedAt && !isDirty ? (
+                      <span className="text-xs text-ghana-muted">
+                        Saved {savedAt.toLocaleTimeString()}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            )}
+          </CardBody>
+        </Card>
+
+        {selectedClause && draft ? (
+          <Card className="overflow-hidden">
+            <CardBody>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif text-2xl font-bold text-ghana-dark">Live preview</h3>
+                  <p className="mt-1 text-sm text-ghana-muted">Rendered the way the public will see it.</p>
+                </div>
+                <Badge tone="green">Preview</Badge>
+              </div>
+              <div className="rounded-xl border border-border bg-ghana-paper px-5 py-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ghana-green">
+                  Section {selectedClause.section_number}
+                </p>
+                <h4 className="mt-2 font-serif text-2xl font-bold text-ghana-dark">{draft.title}</h4>
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-8 text-ghana-ink">
+                  {draft.content}
+                </p>
+                {draft.rationale.trim() ? (
+                  <div className="mt-4 rounded-lg border-l-4 border-ghana-green bg-ghana-green/5 px-4 py-3 text-sm leading-7 text-ghana-muted">
+                    {draft.rationale}
+                  </div>
+                ) : null}
+              </div>
+            </CardBody>
+          </Card>
+        ) : null}
+      </div>
+
+      <Card className="overflow-hidden">
+        <CardBody>
+          <h3 className="font-serif text-xl font-bold text-ghana-dark">Source submissions</h3>
+          <p className="mt-1 text-sm text-ghana-muted">
+            Sample of citizen input that seeded this clause's theme.
+          </p>
+          <div className="mt-4 space-y-3">
+            {!selectedClause ? (
+              <div className="rounded-lg border border-border bg-ghana-paper px-4 py-3 text-sm text-ghana-muted">
+                Select a clause to see related submissions.
+              </div>
+            ) : submissionsQuery.isLoading ? (
+              <div className="rounded-lg border border-border bg-ghana-paper px-4 py-3 text-sm text-ghana-muted">
+                Loading submissions...
+              </div>
+            ) : (submissionsQuery.data ?? []).length === 0 ? (
+              <div className="rounded-lg border border-border bg-ghana-paper px-4 py-3 text-sm text-ghana-muted">
+                No submissions linked to this cluster yet.
+              </div>
+            ) : (
+              (submissionsQuery.data ?? []).map((submission) => (
+                <div
+                  key={submission.id}
+                  className="rounded-xl border border-border bg-white px-4 py-3"
+                >
+                  <div className="flex items-center justify-between text-xs text-ghana-muted">
+                    <span>{submission.region}</span>
+                    <span>{new Date(submission.created_at).toLocaleDateString('en-GB')}</span>
+                  </div>
+                  <p className="mt-2 text-sm leading-7 text-ghana-ink">{submission.content}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  )
+}
+
 export function AdminTemplate() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'statistics' | 'auth'>('dashboard')
   // Temporary: set NEXT_PUBLIC_BYPASS_ADMIN_AUTH=true in .env.local to skip the
@@ -982,19 +1327,7 @@ export function AdminTemplate() {
 
         {activeTab === 'statistics' && <StatsPanel />}
 
-        {activeTab === 'editor' && (
-          <Card>
-            <CardBody className="space-y-4">
-              <h2 className="font-serif text-2xl font-bold text-ghana-dark">Editorial workspace</h2>
-              <p className="text-sm text-ghana-muted">The editor is gated and only reachable from here.</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                {editorSections.map((section) => (
-                  <div key={section} className="rounded-lg border border-border bg-ghana-paper px-4 py-3 text-sm font-medium text-ghana-ink">{section}</div>
-                ))}
-              </div>
-            </CardBody>
-          </Card>
-        )}
+        {activeTab === 'editor' && <ClauseEditorPanel billSlug="reverse-burden" />}
 
         {activeTab === 'statistics' && (
           <Card>
