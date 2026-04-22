@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, get_moderator_user
 from database import get_db
-from models import Bill, BillClause, BillSignature, Cluster, Submission, User
+from models import Bill, BillClause, BillSignature, Cluster, EditHistory, Submission, User
 
 
 router = APIRouter(prefix="/api/bills", tags=["bills"])
@@ -156,11 +156,34 @@ class ClauseResponse(BaseModel):
     content: str
     rationale: Optional[str]
     cluster_id: int
+    legal_review_status: str
+    version: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+LEGAL_REVIEW_STATUSES = {"draft", "reviewed", "approved"}
+
+
+class ClauseUpdate(BaseModel):
+    section_number: Optional[int] = Field(None, ge=1)
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    content: Optional[str] = Field(None, min_length=1)
+    rationale: Optional[str] = None
+    legal_review_status: Optional[str] = None
+    change_reason: Optional[str] = None
+
+    @validator("legal_review_status")
+    def valid_status(cls, v):
+        if v is not None and v not in LEGAL_REVIEW_STATUSES:
+            raise ValueError(
+                f"Invalid legal_review_status: {v}. "
+                f"Must be one of {sorted(LEGAL_REVIEW_STATUSES)}"
+            )
+        return v
 
 
 class FullBillResponse(BaseModel):
@@ -413,6 +436,7 @@ def list_submissions(
     limit: int = 100,
     region: Optional[str] = None,
     submission_status: Optional[str] = None,
+    cluster_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
     bill = _get_bill_or_404(db, slug)
@@ -421,6 +445,8 @@ def list_submissions(
         query = query.filter(Submission.region == region)
     if submission_status is not None:
         query = query.filter(Submission.status == submission_status)
+    if cluster_id is not None:
+        query = query.filter(Submission.cluster_id == cluster_id)
     return (
         query.order_by(Submission.created_at.desc()).offset(skip).limit(limit).all()
     )
@@ -483,6 +509,84 @@ def list_clauses(slug: str, db: Session = Depends(get_db)):
         .order_by(BillClause.section_number)
         .all()
     )
+
+
+CLAUSE_EDITABLE_FIELDS = ("section_number", "title", "content", "rationale", "legal_review_status")
+
+
+@router.patch("/{slug}/clauses/{clause_id}", response_model=ClauseResponse)
+def update_clause(
+    slug: str,
+    clause_id: int,
+    payload: ClauseUpdate,
+    db: Session = Depends(get_db),
+    editor: User = Depends(get_moderator_user),
+):
+    """Edit a draft clause. Records each changed field in edit_history.
+
+    Content changes also snapshot the previous content onto the clause and bump
+    its version so older drafts are recoverable.
+    """
+    bill = _get_bill_or_404(db, slug)
+    if bill.stage not in (STAGE_DRAFTING, STAGE_FINALIZED):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot edit clauses: bill is in stage '{bill.stage}'. "
+                "Editing is allowed during drafting and finalized review."
+            ),
+        )
+
+    clause = (
+        db.query(BillClause)
+        .filter(BillClause.id == clause_id, BillClause.bill_id == bill.id)
+        .first()
+    )
+    if clause is None:
+        raise HTTPException(status_code=404, detail="Clause not found")
+
+    updates = payload.dict(exclude_unset=True)
+    change_reason = updates.pop("change_reason", None)
+
+    changed_fields: list[tuple[str, object, object]] = []
+    for field in CLAUSE_EDITABLE_FIELDS:
+        if field not in updates:
+            continue
+        new_value = updates[field]
+        old_value = getattr(clause, field)
+        if new_value == old_value:
+            continue
+        changed_fields.append((field, old_value, new_value))
+
+    if not changed_fields:
+        return clause
+
+    for field, _old, new_value in changed_fields:
+        setattr(clause, field, new_value)
+
+    if any(field == "content" for field, _o, _n in changed_fields):
+        old_content = next(old for field, old, _n in changed_fields if field == "content")
+        clause.previous_version = old_content
+        clause.version = (clause.version or 1) + 1
+
+    if any(field == "legal_review_status" for field, _o, _n in changed_fields):
+        clause.legal_reviewer_id = editor.id
+
+    for field, old_value, new_value in changed_fields:
+        db.add(
+            EditHistory(
+                clause_id=clause.id,
+                editor_id=editor.id,
+                field_changed=field,
+                old_value=None if old_value is None else str(old_value),
+                new_value=None if new_value is None else str(new_value),
+                change_reason=change_reason,
+            )
+        )
+
+    db.commit()
+    db.refresh(clause)
+    return clause
 
 
 @router.get("/{slug}/full", response_model=FullBillResponse)

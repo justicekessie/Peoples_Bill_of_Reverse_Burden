@@ -160,4 +160,81 @@ export async function verifySignature(slug: string, signatureId: number) {
   return response.data
 }
 
+export type LegalReviewStatus = 'draft' | 'reviewed' | 'approved'
+
+export type Clause = {
+  id: number
+  bill_id: number
+  section_number: number
+  title: string
+  content: string
+  rationale: string | null
+  cluster_id: number
+  legal_review_status: LegalReviewStatus
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export type Cluster = {
+  id: number
+  bill_id: number
+  theme: string
+  summary: string
+  representative_text: string | null
+  submission_count: number
+  confidence_score: number
+  created_at: string
+}
+
+export type Submission = {
+  id: number
+  bill_id: number
+  content: string
+  region: string
+  status: string
+  cluster_id: number | null
+  created_at: string
+}
+
+export type ClauseUpdateInput = {
+  section_number?: number
+  title?: string
+  content?: string
+  rationale?: string | null
+  legal_review_status?: LegalReviewStatus
+  change_reason?: string
+}
+
+export async function listClauses(slug: string) {
+  const response = await api.get<Clause[]>(`/api/bills/${slug}/clauses`)
+  return response.data
+}
+
+export async function listClusters(slug: string) {
+  const response = await api.get<Cluster[]>(`/api/bills/${slug}/clusters`)
+  return response.data
+}
+
+export async function listBillSubmissions(
+  slug: string,
+  options: { clusterId?: number; limit?: number } = {},
+) {
+  const response = await api.get<Submission[]>(`/api/bills/${slug}/submissions`, {
+    params: {
+      cluster_id: options.clusterId,
+      limit: options.limit,
+    },
+  })
+  return response.data
+}
+
+export async function updateClause(slug: string, clauseId: number, input: ClauseUpdateInput) {
+  const response = await api.patch<Clause>(
+    `/api/bills/${slug}/clauses/${clauseId}`,
+    input,
+  )
+  return response.data
+}
+
 export default api
