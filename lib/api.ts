@@ -171,6 +171,7 @@ export type Clause = {
   rationale: string | null
   cluster_id: number
   legal_review_status: LegalReviewStatus
+  public_comments_enabled?: boolean
   version: number
   created_at: string
   updated_at: string

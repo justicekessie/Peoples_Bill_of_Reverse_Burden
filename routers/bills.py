@@ -157,6 +157,7 @@ class ClauseResponse(BaseModel):
     rationale: Optional[str]
     cluster_id: int
     legal_review_status: str
+    public_comments_enabled: bool
     version: int
     created_at: datetime
     updated_at: datetime
