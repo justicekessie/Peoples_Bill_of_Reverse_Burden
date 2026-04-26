@@ -90,13 +90,17 @@ def init_database():
             
             print("✓ Seeded 16 Ghana regions")
         
+        admin_username = os.getenv("ADMIN_USERNAME", "admin")
+        admin_password = os.getenv("ADMIN_PASSWORD", "changeme123")
+        admin_email = os.getenv("ADMIN_EMAIL", "admin@peoplesbill.gh")
+
         # Check if admin user exists
-        if db.query(User).filter(User.username == "admin").count() == 0:
-            # Create default admin user
+        if db.query(User).filter(User.username == admin_username).count() == 0:
+            # Create default admin user (env-configurable)
             admin = User(
-                username="admin",
-                email="admin@peoplesbill.gh",
-                password_hash=get_password_hash("changeme123"),  # Change this!
+                username=admin_username,
+                email=admin_email,
+                password_hash=get_password_hash(admin_password),
                 full_name="System Administrator",
                 role="admin",
                 organization="People's Bill Platform",
@@ -117,7 +121,7 @@ def init_database():
             db.add(legal_reviewer)
             
             print("✓ Created default admin and legal reviewer accounts")
-            print("  Admin login: admin / changeme123")
+            print(f"  Admin login: {admin_username} / {admin_password}")
             print("  Legal login: legal1 / legal123")
             print("  ⚠️  Please change these passwords immediately!")
         
