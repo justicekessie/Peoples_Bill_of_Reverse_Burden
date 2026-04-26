@@ -721,7 +721,7 @@ function AdminGate({ onSignedIn }: { onSignedIn: () => void }) {
               </Button>
             </form>
 
-            <p className="mt-6 text-xs text-ghana-muted">Demo credentials: admin / admin</p>
+            <p className="mt-6 text-xs text-ghana-muted">Use the admin credentials configured on the backend environment.</p>
           </CardBody>
         </Card>
       </section>
